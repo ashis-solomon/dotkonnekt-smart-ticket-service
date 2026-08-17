@@ -5,10 +5,10 @@ info:
 
 http:
   method: GET
-  url: "{{BASE_URL}}/api/v1/tickets?q=dashkoard button invoice"
+  url: "{{BASE_URL}}/api/v1/tickets?q=dashkoard button invdicaf"
   params:
     - name: q
-      value: dashkoard button invoice
+      value: dashkoard button invdicaf
       type: query
   auth:
     type: bearer

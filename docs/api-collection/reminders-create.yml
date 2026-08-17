@@ -5,16 +5,13 @@ info:
 
 http:
   method: POST
-  url: "{{BASE_URL}}/api/v1/tickets"
+  url: "{{BASE_URL}}/api/v1/tickets/01a010c5-e1b8-7bcd-a90b-263414877d1e/reminders"
   body:
     type: json
     data: |-
       {
-        "title": "Cannot access billing invoices from dashboard",
-        "description": "When clicking on the invoice download button, the page throws a 500 error.",
-        "customer_email": "user@example.com",
-        "priority": "medium",
-        "assignee_email": "agent1@example.com"
+        "scheduled_for": "2026-08-17T18:18:00Z",
+        "message": "Follow up with customer regarding invoice download fix"
       }
   auth:
     type: bearer
