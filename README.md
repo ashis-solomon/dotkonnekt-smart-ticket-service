@@ -49,7 +49,7 @@ Long-running and scheduled operations are decoupled from the HTTP request cycle 
 ### 3.3. PostgreSQL Data Layer & Schema Design
 * **Native asyncpg Connection Pool**: Manages 5–20 persistent connections configured with timeout handling during FastAPI lifespan events.
 
-![Database Schema ERD](docs/images/database_schema.png)
+![Database Schema ERD](docs/database_schema.png)
 
 * **Trigram Fuzzy Search (`pg_trgm`)**:
   * PostgreSQL `pg_trgm` extension is enabled with GIN indexes on `title` and `description` (`gin_trgm_ops`).
