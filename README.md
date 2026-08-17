@@ -28,7 +28,6 @@ Long-running and scheduled operations are decoupled from the HTTP request cycle 
 ## 3. Deep-Dive Technical Design
 
 ### 3.1. Authentication & Role-Based Access Control (RBAC)
-* **Password Hashing**: Uses **Argon2id** (memory cost: 64MB, time cost: 3 iterations, parallelism: 4 threads), providing strong resistance against GPU brute-force attacks.
 * **Dual-Token Lifecycle**:
   * **Access Token**: Stateless JWT (30-minute expiry) containing `sub` (User UUID), `email`, and `role`.
   * **Refresh Token**: High-entropy token (7-day expiry) stored as a SHA-256 digest in PostgreSQL (`refresh_tokens` table).
@@ -47,8 +46,11 @@ Long-running and scheduled operations are decoupled from the HTTP request cycle 
   * On failure or transient timeout, Celery retries up to 3 times with **exponential backoff** ($2^{\text{retries}}$ seconds).
   * If retries are exhausted, the worker sets `manual_triage_required = TRUE` on the ticket. The ticket creation request was already completed successfully in sub-50ms.
 
-### 3.3. PostgreSQL Data Layer & Search Architecture
+### 3.3. PostgreSQL Data Layer & Schema Design
 * **Native asyncpg Connection Pool**: Manages 5–20 persistent connections configured with timeout handling during FastAPI lifespan events.
+
+![Database Schema ERD](docs/images/database_schema.png)
+
 * **Trigram Fuzzy Search (`pg_trgm`)**:
   * PostgreSQL `pg_trgm` extension is enabled with GIN indexes on `title` and `description` (`gin_trgm_ops`).
   * Queries combine exact substring matching (`ILIKE`) with fuzzy word similarity (`word_similarity(q, column) > 0.25`), sorting results by similarity score and recency.
