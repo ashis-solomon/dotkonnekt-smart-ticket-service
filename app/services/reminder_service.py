@@ -1,7 +1,7 @@
 """Reminder service handling event scheduling, evaluation, and user notifications."""
 
 import logging
-from typing import List, Optional
+from typing import Any, List, Optional, Tuple
 from uuid import UUID
 import asyncpg
 from fastapi import HTTPException, status
@@ -122,15 +122,44 @@ class ReminderService:
 
         return processed_count
 
-    async def list_notifications(self, user: UserResponse) -> List[NotificationResponse]:
-        """Lists logged notifications for the authenticated user."""
-        query = """
-            SELECT id, reminder_id, user_id, message, created_at
-            FROM notifications
-            WHERE user_id = $1
-            ORDER BY created_at DESC
-        """
-        async with self.pool.acquire() as conn:
-            rows = await conn.fetch(query, user.id)
+    async def list_notifications(
+        self,
+        user: UserResponse,
+        target_user_id: Optional[UUID] = None,
+        page: int = 1,
+        page_size: int = 20,
+    ) -> Tuple[List[NotificationResponse], int]:
+        """Lists paginated notifications: Admin views all (or filtered by user_id), Agent views only their own."""
+        conditions = ["1=1"]
+        params: List[Any] = []
+        idx = 1
 
-        return [NotificationResponse(**dict(r)) for r in rows]
+        if user.is_agent:
+            # Agents can only view their own notifications
+            conditions.append(f"user_id = ${idx}")
+            params.append(user.id)
+            idx += 1
+        elif target_user_id:
+            # Admins can optionally filter by a specific user ID
+            conditions.append(f"user_id = ${idx}")
+            params.append(target_user_id)
+            idx += 1
+
+        where_clause = " AND ".join(conditions)
+
+        count_query = f"SELECT COUNT(*) FROM notifications WHERE {where_clause}"
+        async with self.pool.acquire() as conn:
+            total_records = await conn.fetchval(count_query, *params)
+
+            offset = (page - 1) * page_size
+            data_query = f"""
+                SELECT id, reminder_id, user_id, message, created_at
+                FROM notifications
+                WHERE {where_clause}
+                ORDER BY created_at DESC
+                LIMIT ${idx} OFFSET ${idx+1}
+            """
+            rows = await conn.fetch(data_query, *params, page_size, offset)
+
+        notifications = [NotificationResponse(**dict(r)) for r in rows]
+        return notifications, total_records or 0

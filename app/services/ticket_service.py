@@ -1,5 +1,6 @@
 """Ticket service handling CRUD, trigram fuzzy search, notes, and role-based access control."""
 
+from collections import defaultdict
 import logging
 import math
 from typing import Any, Dict, List, Optional, Tuple
@@ -30,20 +31,45 @@ class TicketService:
         """Creates a new ticket and asynchronously dispatches Celery LLM triage."""
         ticket_id = uuid6.uuid7()
         priority = data.priority.value if data.priority else TicketPriority.MEDIUM.value
-        assigned_to_id = data.assigned_to_id or (user.id if user.is_agent else None)
 
-        query = """
-            INSERT INTO tickets (
-                id, title, description, customer_email, status, priority,
-                category, ai_summary, manual_triage_required, created_by_id,
-                assigned_to_id, created_at, updated_at
-            )
-            VALUES ($1, $2, $3, $4, 'open', $5, NULL, NULL, FALSE, $6, $7, NOW(), NOW())
-            RETURNING id, title, description, customer_email, status, priority,
-                      category, ai_summary, manual_triage_required, created_by_id,
-                      assigned_to_id, created_at, updated_at
-        """
         async with self.pool.acquire() as conn:
+            # Resolve assignee by email if specified; default to ticket creator
+            if data.assignee_email:
+                if user.is_agent and data.assignee_email.lower() != user.email.lower():
+                    raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        detail="Only administrators can assign tickets to other users.",
+                    )
+                assignee_row = await conn.fetchrow(
+                    "SELECT id, is_active FROM users WHERE email = $1",
+                    data.assignee_email,
+                )
+                if not assignee_row:
+                    raise HTTPException(
+                        status_code=status.HTTP_404_NOT_FOUND,
+                        detail=f"Assignee with email '{data.assignee_email}' not found.",
+                    )
+                if not assignee_row["is_active"]:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail="Cannot assign ticket to a deactivated user.",
+                    )
+                assigned_to_id = assignee_row["id"]
+            else:
+                # Default assignee is the ticket creator
+                assigned_to_id = user.id
+
+            query = """
+                INSERT INTO tickets (
+                    id, title, description, customer_email, status, priority,
+                    category, ai_summary, manual_triage_required, created_by_id,
+                    assigned_to_id, created_at, updated_at
+                )
+                VALUES ($1, $2, $3, $4, 'open', $5, NULL, NULL, FALSE, $6, $7, NOW(), NOW())
+                RETURNING id, title, description, customer_email, status, priority,
+                          category, ai_summary, manual_triage_required, created_by_id,
+                          assigned_to_id, created_at, updated_at
+            """
             row = await conn.fetchrow(
                 query,
                 ticket_id,
@@ -109,13 +135,22 @@ class TicketService:
         order_by = "created_at DESC"
         if q and q.strip():
             search_term = q.strip()
-            # Trigram fuzzy match and keyword containment across title and description
+            # Combines exact substring matching with typo-tolerant word similarity
             conditions.append(
-                f"(title % ${idx} OR description % ${idx} OR title ILIKE ${idx+1} OR description ILIKE ${idx+1})"
+                f"("
+                f"title ILIKE ${idx+1} OR description ILIKE ${idx+1} "
+                f"OR word_similarity(${idx}, title) > 0.25 "
+                f"OR word_similarity(${idx}, description) > 0.25"
+                f")"
             )
             params.append(search_term)
             params.append(f"%{search_term}%")
-            order_by = f"similarity(title, ${idx}) + similarity(description, ${idx}) DESC, created_at DESC"
+            order_by = (
+                f"GREATEST("
+                f"word_similarity(${idx}, title), "
+                f"word_similarity(${idx}, description)"
+                f") DESC, created_at DESC"
+            )
             idx += 2
 
         where_clause = " AND ".join(conditions)
@@ -137,7 +172,28 @@ class TicketService:
             """
             rows = await conn.fetch(data_query, *params, page_size, offset)
 
-        tickets = [TicketResponse(**dict(r)) for r in rows]
+        tickets: List[TicketResponse] = []
+        if rows:
+            ticket_ids = [r["id"] for r in rows]
+            notes_query = """
+                SELECT n.id, n.ticket_id, n.author_id, n.content, n.created_at, u.full_name as author_name
+                FROM ticket_notes n
+                JOIN users u ON n.author_id = u.id
+                WHERE n.ticket_id = ANY($1::uuid[])
+                ORDER BY n.created_at ASC
+            """
+            async with self.pool.acquire() as conn:
+                note_rows = await conn.fetch(notes_query, ticket_ids)
+
+            notes_by_ticket: Dict[UUID, List[NoteResponse]] = defaultdict(list)
+            for nr in note_rows:
+                notes_by_ticket[nr["ticket_id"]].append(NoteResponse(**dict(nr)))
+
+            for r in rows:
+                ticket_dict = dict(r)
+                ticket_dict["notes"] = notes_by_ticket.get(r["id"], [])
+                tickets.append(TicketResponse(**ticket_dict))
+
         return tickets, total_records or 0
 
     async def get_ticket(self, ticket_id: UUID, user: UserResponse) -> TicketResponse:
@@ -158,7 +214,19 @@ class TicketService:
                 detail="Ticket not found.",
             )
 
-        ticket = TicketResponse(**dict(row))
+        notes_query = """
+            SELECT n.id, n.ticket_id, n.author_id, n.content, n.created_at, u.full_name as author_name
+            FROM ticket_notes n
+            JOIN users u ON n.author_id = u.id
+            WHERE n.ticket_id = $1
+            ORDER BY n.created_at ASC
+        """
+        async with self.pool.acquire() as conn:
+            note_rows = await conn.fetch(notes_query, ticket_id)
+
+        ticket_dict = dict(row)
+        ticket_dict["notes"] = [NoteResponse(**dict(nr)) for nr in note_rows]
+        ticket = TicketResponse(**ticket_dict)
 
         # RBAC Check: Agents can only view tickets assigned to them
         if user.is_agent and ticket.assigned_to_id != user.id:
@@ -203,15 +271,29 @@ class TicketService:
             params.append(data.category.value)
             idx += 1
 
-        if data.assigned_to_id is not None:
-            # Only admin can reassign tickets to other agents
-            if user.is_agent and data.assigned_to_id != user.id:
+        if data.assignee_email is not None:
+            if user.is_agent and data.assignee_email.lower() != user.email.lower():
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
-                    detail="Agents cannot reassign tickets to other users.",
+                    detail="Only administrators can reassign tickets to other users.",
+                )
+            async with self.pool.acquire() as conn:
+                assignee_row = await conn.fetchrow(
+                    "SELECT id, is_active FROM users WHERE email = $1",
+                    data.assignee_email,
+                )
+            if not assignee_row:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Assignee with email '{data.assignee_email}' not found.",
+                )
+            if not assignee_row["is_active"]:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Cannot assign ticket to a deactivated user.",
                 )
             updates.append(f"assigned_to_id = ${idx}")
-            params.append(data.assigned_to_id)
+            params.append(assignee_row["id"])
             idx += 1
 
         if not updates:
@@ -243,7 +325,9 @@ class TicketService:
                 await conn.execute(cancel_query, ticket_id)
                 logger.info("Auto-cancelled pending reminders for ticket %s", ticket_id)
 
-        return TicketResponse(**dict(row))
+        ticket_dict = dict(row)
+        ticket_dict["notes"] = current_ticket.notes
+        return TicketResponse(**ticket_dict)
 
     async def create_note(self, ticket_id: UUID, data: NoteCreate, user: UserResponse) -> NoteResponse:
         """Adds an internal note to a ticket."""

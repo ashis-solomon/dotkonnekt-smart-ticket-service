@@ -21,6 +21,8 @@ services:
       - JWT_SECRET_KEY=supersecretjwtkey_change_in_production_min_32_chars_long_12345
       - LLM_PROVIDER=ollama
       - OLLAMA_BASE_URL=http://ollama:11434
+      - OLLAMA_MODEL=llama3.2:1b
+      - LLM_TIMEOUT_SECONDS=300.0
     depends_on:
       db:
         condition: service_healthy
@@ -46,10 +48,14 @@ services:
       - CELERY_RESULT_BACKEND=redis://redis:6379/1
       - LLM_PROVIDER=ollama
       - OLLAMA_BASE_URL=http://ollama:11434
+      - OLLAMA_MODEL=llama3.2:1b
+      - LLM_TIMEOUT_SECONDS=300.0
     depends_on:
       db:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      ollama:
         condition: service_healthy
     restart: unless-stopped
 
@@ -103,6 +109,12 @@ services:
       - "11434:11434"
     volumes:
       - ollama_data:/root/.ollama
+    healthcheck:
+      test: ["CMD-SHELL", "ollama list || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
     restart: unless-stopped
 
 volumes:

@@ -91,14 +91,16 @@ async def _mark_manual_triage_required(ticket_id: str, pool: Optional[asyncpg.Po
 )
 def triage_ticket_task(self, ticket_id: str) -> None:
     """Celery task executing LLM auto-triage with exponential backoff and graceful manual fallback."""
-    logger.info("Starting auto-triage for ticket ID: %s (attempt %d)", ticket_id, self.request.retries + 1)
+    attempt = getattr(self.request, "retries", 0) + 1
+    logger.info("Starting auto-triage for ticket ID: %s (attempt %d/4)", ticket_id, attempt)
     try:
         run_coroutine_sync(_execute_triage(ticket_id))
     except Exception as exc:
         logger.error("Error during triage for ticket %s: %s", ticket_id, str(exc))
-        try:
-            countdown = 2 ** (self.request.retries + 1)
-            raise self.retry(exc=exc, countdown=countdown)
-        except MaxRetriesExceededError:
-            logger.error("Max retries exceeded for ticket %s. Falling back to manual triage.", ticket_id)
+        if self.request.retries >= self.max_retries:
+            logger.warning("Max retries (%d) reached for ticket %s. Setting manual_triage_required = TRUE.", self.max_retries, ticket_id)
             run_coroutine_sync(_mark_manual_triage_required(ticket_id))
+        else:
+            countdown = 2 ** (self.request.retries + 1)
+            logger.info("Scheduling retry for ticket %s in %ds...", ticket_id, countdown)
+            raise self.retry(exc=exc, countdown=countdown)

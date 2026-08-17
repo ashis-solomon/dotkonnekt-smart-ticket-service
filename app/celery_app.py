@@ -22,7 +22,8 @@ celery_app.conf.update(
     timezone="UTC",
     enable_utc=True,
     task_track_started=True,
-    task_time_limit=30,  # 30 seconds hard limit
+    task_time_limit=360,  # 360 seconds (6 minutes) hard limit for slow local LLM inference
+    task_soft_time_limit=300,  # 300 seconds (5 minutes) soft limit
     beat_schedule={
         "check-due-reminders-every-30s": {
             "task": "app.tasks.reminders.check_due_reminders_task",

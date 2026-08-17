@@ -1,11 +1,11 @@
 """Authentication and token management endpoints."""
 
 from typing import Dict
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 import asyncpg
 
 from app.api.deps import get_auth_service, get_current_user, get_db_pool
-from app.config import Settings, get_settings
+from app.api.middlewares.rate_limit import limiter
 from app.schemas.auth import (
     LogoutRequest,
     TokenRefreshRequest,
@@ -27,8 +27,10 @@ router = APIRouter(prefix="/auth", tags=["Authentication"])
     status_code=status.HTTP_201_CREATED,
     summary="Register a new user",
 )
+@limiter.limit("15/minute")
 async def register(
     request: Request,
+    response: Response,
     data: UserRegister,
     auth_service: AuthService = Depends(get_auth_service),
 ) -> ApiResponse[UserResponse]:
@@ -54,8 +56,10 @@ async def register(
     status_code=status.HTTP_200_OK,
     summary="Authenticate credentials and issue JWT tokens",
 )
+@limiter.limit("10/minute")
 async def login(
     request: Request,
+    response: Response,
     data: UserLogin,
     auth_service: AuthService = Depends(get_auth_service),
 ) -> ApiResponse[TokenResponse]:

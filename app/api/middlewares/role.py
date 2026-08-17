@@ -1,7 +1,6 @@
 """Role-checking and authentication middleware."""
 
 from datetime import datetime, timezone
-import logging
 from typing import Set
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
@@ -12,10 +11,9 @@ from app.config import get_settings
 from app.schemas.common import generate_request_id
 from app.schemas.user import UserResponse, UserRole
 
-logger = logging.getLogger("app.api.role_middleware")
-
 PUBLIC_PATHS: Set[str] = {
     "/health",
+    "/api/v1/health",
     "/docs",
     "/redoc",
     "/openapi.json",
@@ -26,9 +24,10 @@ PUBLIC_PATHS: Set[str] = {
 }
 
 
-def _error_response(request: Request, status_code: int, code: str, message: str) -> JSONResponse:
-    request_id = getattr(request.state, "request_id", generate_request_id())
-    headers = {"X-Request-ID": request_id}
+def _error_response(request: Request, status_code: int, code: str, msg: str) -> JSONResponse:
+    """Helper returning consistent JSON error envelopes."""
+    req_id = getattr(request.state, "request_id", generate_request_id())
+    headers = {"X-Request-ID": req_id}
     if status_code == 401:
         headers["WWW-Authenticate"] = "Bearer"
 
@@ -37,8 +36,8 @@ def _error_response(request: Request, status_code: int, code: str, message: str)
         headers=headers,
         content={
             "success": False,
-            "error": {"code": code, "message": message, "details": []},
-            "meta": {"timestamp": datetime.now(timezone.utc).isoformat(), "requestId": request_id},
+            "error": {"code": code, "message": msg, "details": []},
+            "meta": {"timestamp": datetime.now(timezone.utc).isoformat(), "requestId": req_id},
         },
     )
 
@@ -51,19 +50,15 @@ class RoleMiddleware(BaseHTTPMiddleware):
     3. Validate user role ('admin' or 'agent').
     4. Attach authenticated user object to request.state.user.
     """
-
     async def dispatch(self, request: Request, call_next) -> Response:
-        path = request.url.path
-
-        if path in PUBLIC_PATHS or path.startswith(("/docs", "/redoc", "/openapi")):
-            request.state.user = None
+        if request.url.path in PUBLIC_PATHS or request.url.path.startswith(("/docs", "/redoc", "/openapi")):
             return await call_next(request)
 
-        auth_header = request.headers.get("Authorization")
-        if not auth_header or not auth_header.startswith("Bearer "):
+        auth_header = request.headers.get("Authorization", "")
+        if not auth_header.startswith("Bearer "):
             return _error_response(request, 401, "UNAUTHORIZED", "Authentication credentials were not provided.")
 
-        token = auth_header.split(" ", 1)[1].strip()
+        token = auth_header[7:].strip()
         if not token:
             return _error_response(request, 401, "UNAUTHORIZED", "Authentication credentials were not provided.")
 
@@ -80,14 +75,16 @@ class RoleMiddleware(BaseHTTPMiddleware):
             return _error_response(request, 401, "UNAUTHORIZED", "Invalid token type.")
 
         user_id = payload.get("sub")
-        role_str = payload.get("role")
-        if not user_id or not role_str:
+        if not user_id:
             return _error_response(request, 401, "UNAUTHORIZED", "Invalid token payload.")
 
-        # Middleware Role Validation (Admin or Agent)
-        if role_str not in [UserRole.ADMIN.value, UserRole.AGENT.value]:
-            return _error_response(request, 403, "FORBIDDEN", f"Invalid user role: {role_str}")
+        # Validate role matches registered UserRole (Admin or Agent)
+        try:
+            role = UserRole(payload.get("role"))
+        except (ValueError, TypeError):
+            return _error_response(request, 403, "FORBIDDEN", f"Invalid user role: {payload.get('role')}")
 
+        # Fetch active user from database
         pool = getattr(request.app.state, "db_pool", None)
         if pool:
             query = "SELECT id, email, full_name, role, is_active, created_at, updated_at FROM users WHERE id = $1"
@@ -96,7 +93,6 @@ class RoleMiddleware(BaseHTTPMiddleware):
 
             if not row:
                 return _error_response(request, 401, "UNAUTHORIZED", "User not found.")
-
             if not row["is_active"]:
                 return _error_response(request, 403, "FORBIDDEN", "User account is deactivated.")
 
@@ -106,12 +102,11 @@ class RoleMiddleware(BaseHTTPMiddleware):
                 id=user_id,
                 email=payload.get("email", ""),
                 full_name=payload.get("name", "User"),
-                role=UserRole(role_str),
+                role=role,
                 is_active=True,
                 created_at=datetime.now(timezone.utc),
                 updated_at=datetime.now(timezone.utc),
             )
 
         request.state.user = user
-        request.state.user_role = user.role
         return await call_next(request)

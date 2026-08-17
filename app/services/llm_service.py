@@ -40,16 +40,26 @@ class OllamaAdapter(BaseLLMAdapter):
 
     async def triage(self, title: str, description: str) -> TriageResult:
         prompt = f"""You are an automated support ticket triage assistant.
-Analyze the following customer support ticket and return a JSON object with:
-- "summary": A concise 1-2 sentence summary of the issue.
-- "category": One of "billing", "technical", "account", or "other".
-- "priority": One of "low", "medium", or "high".
+Classify the customer support ticket into EXACTLY ONE category and ONE priority.
+
+Classification Guidelines:
+- "billing": Invoices, charges, receipts, payments, refunds, card issues, subscription pricing.
+- "account": Login, passwords, 2FA, profile, registration, permissions, user access.
+- "technical": Software bugs, crashes, 500 errors, system outages, broken features, API errors.
+- "other": General inquiries, greetings (e.g. "hello", "hi", "test"), feedback, or anything that does not clearly belong to billing, account, or technical.
+
+Priority Guidelines:
+- "low": General inquiries, greetings, minor questions, non-blocking requests.
+- "medium": Standard user issues.
+- "high": Critical blockers, security vulnerabilities, payment processing failures, system-wide outages.
 
 Ticket Title: {title}
 Ticket Description: {description}
 
-Return ONLY valid JSON matching this schema:
-{{"summary": "string", "category": "billing|technical|account|other", "priority": "low|medium|high"}}
+Respond with a single JSON object. Example:
+{{"summary": "Customer sent a general greeting inquiry.", "category": "other", "priority": "low"}}
+
+Do NOT include multiple options or pipe characters. Choose only ONE category and ONE priority.
 """
         payload = {
             "model": self.model,
@@ -60,12 +70,44 @@ Return ONLY valid JSON matching this schema:
 
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             response = await client.post(f"{self.base_url}/api/generate", json=payload)
-            response.raise_for_status()
+            if response.status_code != 200:
+                try:
+                    err_msg = response.json().get("error", response.text)
+                except Exception:
+                    err_msg = response.text
+                raise RuntimeError(f"Ollama error ({response.status_code}): {err_msg}")
+
             data = response.json()
             raw_response = data.get("response", "{}")
+            logger.info("Ollama raw response received: %s", raw_response)
 
-            parsed = json.loads(raw_response)
-            return TriageResult(**parsed)
+            try:
+                parsed = json.loads(raw_response)
+            except Exception as e:
+                logger.error("Could not parse Ollama response as JSON: %s. Raw was: %s", str(e), raw_response)
+                raise ValueError(f"Could not parse Ollama response as JSON: {raw_response}") from e
+
+            # Extract category & priority
+            raw_category = str(parsed.get("category", "")).lower().strip()
+            raw_priority = str(parsed.get("priority", "")).lower().strip()
+            summary = str(parsed.get("summary", "")).strip() or f"{title}: {description[:120]}"
+
+            valid_categories = {"billing", "technical", "account", "other"}
+            valid_priorities = {"low", "medium", "high"}
+
+            if raw_category not in valid_categories:
+                logger.error("LLM returned invalid category '%s'. Failing triage for manual review.", raw_category)
+                raise ValueError(f"LLM returned invalid category '{raw_category}'. Expected one of {valid_categories}")
+
+            if raw_priority not in valid_priorities:
+                logger.warning("LLM returned unrecognized priority '%s'. Defaulting to medium.", raw_priority)
+                raw_priority = "medium"
+
+            category: Literal["billing", "technical", "account", "other"] = raw_category
+            priority: Literal["low", "medium", "high"] = raw_priority
+
+            logger.info("Triage result finalized: category=%s, priority=%s, summary=%s", category, priority, summary)
+            return TriageResult(summary=summary, category=category, priority=priority)
 
 
 class MockLLMAdapter(BaseLLMAdapter):

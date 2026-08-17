@@ -2,9 +2,10 @@
 
 from datetime import datetime
 from enum import Enum
-from typing import Optional
+from typing import List, Optional
 from uuid import UUID
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from app.schemas.note import NoteResponse
 
 
 class TicketStatus(str, Enum):
@@ -32,7 +33,7 @@ class TicketCreate(BaseModel):
     description: str = Field(..., min_length=5)
     customer_email: EmailStr
     priority: Optional[TicketPriority] = None
-    assigned_to_id: Optional[UUID] = None
+    assignee_email: Optional[EmailStr] = None
 
 
 class TicketUpdate(BaseModel):
@@ -41,7 +42,7 @@ class TicketUpdate(BaseModel):
     status: Optional[TicketStatus] = None
     priority: Optional[TicketPriority] = None
     category: Optional[TicketCategory] = None
-    assigned_to_id: Optional[UUID] = None
+    assignee_email: Optional[EmailStr] = None
 
 
 class TicketResponse(BaseModel):
@@ -58,5 +59,6 @@ class TicketResponse(BaseModel):
     assigned_to_id: Optional[UUID] = None
     created_at: datetime
     updated_at: datetime
+    notes: List[NoteResponse] = Field(default_factory=list, description="Internal notes attached to the ticket")
 
     model_config = ConfigDict(from_attributes=True)

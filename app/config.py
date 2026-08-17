@@ -58,8 +58,8 @@ class Settings(BaseSettings):
     # LLM Auto-Triage Engine (Ollama / Mock)
     LLM_PROVIDER: Literal["ollama", "mock"] = "ollama"
     OLLAMA_BASE_URL: str = "http://localhost:11434"
-    OLLAMA_MODEL: str = "llama3.2"
-    LLM_TIMEOUT_SECONDS: float = 5.0
+    OLLAMA_MODEL: str = "llama3.2:1b"
+    LLM_TIMEOUT_SECONDS: float = 300.0
     LLM_MAX_RETRIES: int = 3
 
     @property

@@ -4,13 +4,17 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 import logging
 from typing import Any, Dict, List
+import asyncpg
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
+
 from app.api.middlewares.logging import RequestIdLogFilter, StructuredLoggingMiddleware
-from app.api.middlewares.rate_limit import RateLimitMiddleware
+from app.api.middlewares.rate_limit import custom_rate_limit_exceeded_handler, limiter
 from app.api.middlewares.request_id import RequestIdMiddleware
 from app.api.middlewares.role import RoleMiddleware
 from app.api.v1.api import api_v1_router
@@ -78,9 +82,12 @@ def create_application() -> FastAPI:
         lifespan=lifespan,
     )
 
+    app.state.limiter = limiter
+    app.add_exception_handler(RateLimitExceeded, custom_rate_limit_exceeded_handler)
+
     app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
     app.add_middleware(RoleMiddleware)
-    app.add_middleware(RateLimitMiddleware)
+    app.add_middleware(SlowAPIMiddleware)
     app.add_middleware(StructuredLoggingMiddleware)
     app.add_middleware(RequestIdMiddleware)
 
@@ -104,9 +111,10 @@ def create_application() -> FastAPI:
         return _build_error_response(request, 500, "INTERNAL_SERVER_ERROR", "An unexpected error occurred.")
 
     @app.get("/health", tags=["Health"], summary="System health check")
+    @limiter.exempt
     async def health_check(request: Request) -> Dict[str, Any]:
         request_id = getattr(request.state, "request_id", generate_request_id())
-        pool = getattr(request.app.state, "db_pool", None)
+        pool: asyncpg.Pool = getattr(request.app.state, "db_pool", None)
         db_healthy = False
         if pool:
             try:
@@ -119,8 +127,6 @@ def create_application() -> FastAPI:
             "success": True,
             "data": {
                 "status": "healthy" if db_healthy else "degraded",
-                "database": "connected" if db_healthy else "disconnected",
-                "llm_provider": get_settings().LLM_PROVIDER,
             },
             "meta": {"timestamp": datetime.now(timezone.utc).isoformat(), "requestId": request_id},
         }
