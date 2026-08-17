@@ -1,0 +1,30 @@
+opencollection: 1.0.0
+
+info:
+  name: dotkonnekt-smart-ticket-service
+config:
+  proxy:
+    inherit: true
+    config:
+      protocol: http
+      hostname: ""
+      port: ""
+      auth:
+        username: ""
+        password: ""
+      bypassProxy: ""
+
+request:
+  variables:
+    - name: BASE_URL
+      value: http://localhost:8000
+    - name: TOKEN
+      value: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIwMWEwMTAyOC1kZmU1LTdjZmMtOWJjYS04MGUyOTMwM2RkOGYiLCJlbWFpbCI6ImFkbWluMUBleGFtcGxlLmNvbSIsInJvbGUiOiJhZG1pbiIsInR5cGUiOiJhY2Nlc3MiLCJqdGkiOiIwMWEwMTBlZi1iYTIxLTcxZDYtOGEyZS1lZTczZWVjZjA5MjQiLCJpYXQiOjE3ODY5OTA1NDEsImV4cCI6MTc4Njk5MjM0MX0.B24tq4-qzC3zesTlcRRbR1lDkLo6jczSt9bEkImRKS8
+    - name: REFRESH_TOKEN
+      value: lAe6gvQ-2ZWhV1kMkIOwyiiDjYHgJWvpXsiqf4aBC6kw_zNYG2ZvvdsTpPE7FmpC
+bundled: false
+extensions:
+  bruno:
+    ignore:
+      - node_modules
+      - .git

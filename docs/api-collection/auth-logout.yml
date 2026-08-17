@@ -1,0 +1,60 @@
+info:
+  name: auth/logout
+  type: http
+  seq: 6
+
+http:
+  method: POST
+  url: "{{BASE_URL}}/api/v1/auth/logout"
+  body:
+    type: json
+    data: |-
+      {
+        "refresh_token": "{{REFRESH_TOKEN}}"
+      }
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+examples:
+  - name: example
+    request:
+      url: "{{BASE_URL}}/api/v1/auth/logout"
+      method: POST
+      body:
+        type: json
+        data: |-
+          {
+            "refresh_token": "{{REFRESH_TOKEN}}"
+          }
+    response:
+      status: 200
+      statusText: OK
+      headers:
+        - name: date
+          value: Mon, 17 Aug 2026 16:09:28 GMT
+        - name: server
+          value: uvicorn
+        - name: content-length
+          value: "188"
+        - name: content-type
+          value: application/json
+        - name: x-request-id
+          value: req_01a0107c-2ba0-79a2-97f1-6f19222366d0
+      body:
+        type: json
+        data: |-
+          {
+            "success": true,
+            "data": {
+              "message": "Logged out successfully. Token revoked."
+            },
+            "meta": {
+              "timestamp": "2026-08-17T16:09:28.227000+00:00",
+              "requestId": "req_01a0107c-2ba0-79a2-97f1-6f19222366d0"
+            }
+          }

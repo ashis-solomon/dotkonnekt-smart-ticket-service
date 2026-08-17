@@ -1,0 +1,82 @@
+info:
+  name: auth/login
+  type: http
+  seq: 3
+
+http:
+  method: POST
+  url: "{{BASE_URL}}/api/v1/auth/login"
+  body:
+    type: json
+    data: |-
+      {
+        "email": "admin1@example.com",
+        "password": "admin1_password"
+      }
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+examples:
+  - name: example
+    request:
+      url: "{{BASE_URL}}/api/v1/auth/login"
+      method: POST
+      body:
+        type: json
+        data: |-
+          {
+            "email": "admin1@example.com",
+            "password": "admin1_password"
+          }
+    response:
+      status: 200
+      statusText: OK
+      headers:
+        - name: date
+          value: Mon, 17 Aug 2026 16:05:17 GMT
+        - name: server
+          value: uvicorn
+        - name: content-length
+          value: "827"
+        - name: content-type
+          value: application/json
+        - name: x-ratelimit-limit
+          value: "10"
+        - name: x-ratelimit-remaining
+          value: "9"
+        - name: x-ratelimit-reset
+          value: "1786982778.550414"
+        - name: retry-after
+          value: "60"
+        - name: x-request-id
+          value: req_01a01078-5867-7f79-a6d5-616d60379dd4
+      body:
+        type: json
+        data: |-
+          {
+            "success": true,
+            "data": {
+              "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIwMWEwMTAyOC1kZmU1LTdjZmMtOWJjYS04MGUyOTMwM2RkOGYiLCJlbWFpbCI6ImFkbWluMUBleGFtcGxlLmNvbSIsInJvbGUiOiJhZG1pbiIsInR5cGUiOiJhY2Nlc3MiLCJqdGkiOiIwMWEwMTA3OC01OGEyLTdjMDUtYTViMy1jZWM5MTM1ODlkNDIiLCJpYXQiOjE3ODY5ODI3MTcsImV4cCI6MTc4Njk4NDUxN30.KOq3t5AdoKWcVKVc2iAEL8Ed-qV87S3xla2OcT_w6uY",
+              "refresh_token": "5rsa-CIAAE1OMUWldsH36vlnT-0J0TsO7EB-5z7_11TA-aPUHDRO52_1Z8QgD9vE",
+              "token_type": "bearer",
+              "expires_in": 1800,
+              "user": {
+                "email": "admin1@example.com",
+                "full_name": "admin 1",
+                "role": "admin",
+                "id": "01a01028-dfe5-7cfc-9bca-80e29303dd8f",
+                "is_active": true,
+                "created_at": "2026-08-17T14:38:29.387577Z",
+                "updated_at": "2026-08-17T14:38:29.387577Z"
+              }
+            },
+            "meta": {
+              "timestamp": "2026-08-17T16:05:17.606544+00:00",
+              "requestId": "req_01a01078-5867-7f79-a6d5-616d60379dd4"
+            }
+          }

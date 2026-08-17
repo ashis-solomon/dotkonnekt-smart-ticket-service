@@ -1,0 +1,27 @@
+info:
+  name: reminders/create
+  type: http
+  seq: 10
+
+http:
+  method: POST
+  url: "{{BASE_URL}}/api/v1/tickets"
+  body:
+    type: json
+    data: |-
+      {
+        "title": "Cannot access billing invoices from dashboard",
+        "description": "When clicking on the invoice download button, the page throws a 500 error.",
+        "customer_email": "user@example.com",
+        "priority": "medium",
+        "assignee_email": "agent1@example.com"
+      }
+  auth:
+    type: bearer
+    token: "{{TOKEN}}"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5

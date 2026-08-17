@@ -1,0 +1,48 @@
+info:
+  name: health
+  type: http
+  seq: 1
+
+http:
+  method: GET
+  url: "{{BASE_URL}}/health"
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+examples:
+  - name: example
+    request:
+      url: "{{BASE_URL}}/health"
+      method: GET
+    response:
+      status: 200
+      statusText: OK
+      headers:
+        - name: date
+          value: Mon, 17 Aug 2026 16:05:01 GMT
+        - name: server
+          value: uvicorn
+        - name: content-length
+          value: "155"
+        - name: content-type
+          value: application/json
+        - name: x-request-id
+          value: req_01a01078-1ae5-7b27-9ece-a088828a20af
+      body:
+        type: json
+        data: |-
+          {
+            "success": true,
+            "data": {
+              "status": "healthy"
+            },
+            "meta": {
+              "timestamp": "2026-08-17T16:05:01.798693+00:00",
+              "requestId": "req_01a01078-1ae5-7b27-9ece-a088828a20af"
+            }
+          }

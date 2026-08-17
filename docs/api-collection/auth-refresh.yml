@@ -1,0 +1,63 @@
+info:
+  name: auth/refresh
+  type: http
+  seq: 4
+
+http:
+  method: POST
+  url: "{{BASE_URL}}/api/v1/auth/refresh"
+  body:
+    type: json
+    data: |-
+      {
+        "refresh_token": "{{REFRESH_TOKEN}}"
+      }
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+examples:
+  - name: example
+    request:
+      url: "{{BASE_URL}}/api/v1/auth/refresh"
+      method: POST
+      body:
+        type: json
+        data: |-
+          {
+            "refresh_token": "{{REFRESH_TOKEN}}"
+          }
+    response:
+      status: 200
+      statusText: OK
+      headers:
+        - name: date
+          value: Mon, 17 Aug 2026 16:05:56 GMT
+        - name: server
+          value: uvicorn
+        - name: content-length
+          value: "605"
+        - name: content-type
+          value: application/json
+        - name: x-request-id
+          value: req_01a01078-f048-7e9f-b6a4-cc4bfd0ee4af
+      body:
+        type: json
+        data: |-
+          {
+            "success": true,
+            "data": {
+              "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIwMWEwMTAyOC1kZmU1LTdjZmMtOWJjYS04MGUyOTMwM2RkOGYiLCJlbWFpbCI6ImFkbWluMUBleGFtcGxlLmNvbSIsInJvbGUiOiJhZG1pbiIsInR5cGUiOiJhY2Nlc3MiLCJqdGkiOiIwMWEwMTA3OC1mMDUxLTc5NzktODIyZS1lMDk1OTM5MjU0YTUiLCJpYXQiOjE3ODY5ODI3NTYsImV4cCI6MTc4Njk4NDU1Nn0.WvDzvj-2wInl3S4soPhOIZKpO98EE4uGbT7EvHyrv-0",
+              "refresh_token": "lAe6gvQ-2ZWhV1kMkIOwyiiDjYHgJWvpXsiqf4aBC6kw_zNYG2ZvvdsTpPE7FmpC",
+              "token_type": "bearer",
+              "expires_in": 1800
+            },
+            "meta": {
+              "timestamp": "2026-08-17T16:05:56.433980+00:00",
+              "requestId": "req_01a01078-f048-7e9f-b6a4-cc4bfd0ee4af"
+            }
+          }
